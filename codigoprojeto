@@ -1,0 +1,133 @@
+/*PROJETO INTEGRADOR - ESTAÇÃO METEOROLÓGICA
+GRUPO PLATINUM CLOUD
+INTEGRANTES: 
+ALLAN JARDIM FERREIRA 
+EVERSON RODRIGUES GONORING 
+KRYSTHIAN SIMÕES GOMES
+RAFAEL DA SILVA PEREIRA 
+RENATO OLIVEIRA CARVALHO
+*/
+
+#include <DHT.h>    
+#include <Adafruit_Sensor.h> 
+#include <Adafruit_BMP280.h> 
+Adafruit_BMP280 bmp; 
+#include <Ethernet.h>
+#ifdef SPARK
+#include "ThingSpeak/ThingSpeak.h"    
+#else
+#include "ThingSpeak.h"
+#endif
+
+#define WRITE_DELAY_FOR_THINGSPEAK 15000
+#define DHTPIN 5   
+#define DHTTYPE DHT11 
+#define sensorchamas 8
+#define sensorchuva 3
+
+DHT dht(DHTPIN, DHTTYPE);
+ 
+  byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE,0xED};
+  IPAddress ip(192,168,0,150);                          
+  EthernetClient client;
+
+  unsigned long mySensorsChannelNumber = 1371146;            
+  unsigned long myCommandsChannelNumber = 1371149;           
+  
+  const char * myWriteAPIKey_sensors = "SRR5IKKFZO4YAYAL";  
+  const char * myWriteAPIKey_commands = "GIG5M2PJ8AZPRNNB"; 
+                                                             
+
+long lastWriteTime=0;    
+long lastReadTime=0;
+float responseValue=0;
+
+void setup() {
+  pinMode(9, OUTPUT);  
+  digitalWrite(9,HIGH);
+  pinMode(4, OUTPUT);  // BUZZER
+  digitalWrite(4, HIGH);
+  
+  pinMode(sensorchamas, INPUT);
+  pinMode(sensorchuva, INPUT);
+  
+  Serial.begin(9600);
+  bmp.begin();
+  dht.begin();
+  Ethernet.begin(mac, ip);
+  ThingSpeak.begin(client);
+  pinMode(7,OUTPUT);
+  Serial.println("Setup completo");
+  delay(1000);
+}
+
+
+void loop() {
+
+    float chamas;
+    float chuva;
+      if ( digitalRead(sensorchuva) == HIGH ) { 
+      chuva = 0;
+      }
+      if ( digitalRead(sensorchuva) == LOW ) {
+      chuva = 1;
+      }
+    
+      if ( digitalRead(sensorchamas) == HIGH ) {
+      chamas = 1;
+      digitalWrite(4, LOW);
+      }
+      if ( digitalRead(sensorchamas) == LOW ) {
+      chamas = 0;
+      digitalWrite(4, HIGH);
+      }
+   
+
+
+  if (millis()-lastWriteTime>20000) {       // a cada 20 segundos.   
+    
+      Serial.println("Lendo sensores...");
+      float h = dht.readHumidity();
+      float t = dht.readTemperature();
+      float p = bmp.readPressure()/100;
+      float c = chamas;
+      float z = chuva;
+    
+ 
+      if (isnan(t) || isnan(h)) {
+        Serial.println("Falha no sensor de temperatura e umidade");
+      }
+      
+      else {
+        
+          Serial.println("Temp="+String(t)+" *C");
+          Serial.println("Humidity="+String(h)+" %");
+          Serial.println("Pressure="+String(p)+" hPa");
+          Serial.println("Chamas="+String(c));
+          Serial.println("Chuva="+String(z));
+
+
+
+          ThingSpeak.setField(1,t);
+          ThingSpeak.setField(2,h);
+          ThingSpeak.setField(3,p);
+          ThingSpeak.setField(4,c);
+          ThingSpeak.setField(5,z);
+
+          ThingSpeak.setField(8,responseValue);             
+          ThingSpeak.writeFields(mySensorsChannelNumber, myWriteAPIKey_sensors);                  
+          lastWriteTime=millis();               
+      }
+  }
+ 
+   if (millis()-lastReadTime>15000) {      
+      float value = ThingSpeak.readFloatField(myCommandsChannelNumber, 1);
+      Serial.println("Read thingSpeak channel commands/field 1 last value="+ String(value));
+      if (value==0) digitalWrite(7,LOW);
+      else digitalWrite(7,HIGH);
+      responseValue=value;
+      lastReadTime=millis();                
+   }
+   
+ 
+} 
